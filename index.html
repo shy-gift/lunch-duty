@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>급식지도 교사조회</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+    font-family: Arial, sans-serif;
+    background: #5d4037;
+    min-height: 100vh;
+    padding: 16px;
+}
+.wrap { max-width: 500px; margin: 0 auto; }
+.header {
+    background: #d97642;
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 14px;
+    text-align: center;
+    color: white;
+}
+.header h1 { font-size: 24px; margin-bottom: 4px; }
+.header p { font-size: 13px; opacity: 0.85; }
+.card {
+    background: white;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 14px;
+}
+.card h2 { font-size: 16px; margin-bottom: 14px; color: #3d2817; }
+input[type=text] {
+    width: 100%;
+    padding: 14px;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+.btn-main { background: #d97642; color: white; }
+.btn-blue { background: #2563eb; color: white; }
+.msg {
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 14px;
+    font-size: 14px;
+    font-weight: bold;
+}
+.msg-green { background: #d1fae5; color: #065f46; }
+.msg-red { background: #fee2e2; color: #991b1b; }
+.msg-orange { background: #fff7ed; color: #9a3412; }
+.duty {
+    background: #e8f5e9;
+    border-left: 4px solid #2d6a4f;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+}
+.duty-date { font-size: 17px; font-weight: bold; color: #1b4332; }
+.duty-info { font-size: 14px; color: #2d6a4f; margin-top: 4px; }
+.next-box { background: #fff8f0; border: 2px solid #d97642; border-radius: 8px; padding: 10px; margin-top: 8px; font-size: 13px; color: #c8622f; font-weight: bold; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: #f0ebe3; padding: 8px 4px; border: 1px solid #ddd; }
+td { padding: 6px 4px; border: 1px solid #ddd; vertical-align: top; }
+.chip { display: inline-block; padding: 2px 6px; border-radius: 4px; margin: 1px; background: #f5f5f5; font-size: 11px; }
+.chip-me { background: #fef08a; font-weight: bold; }
+.footer { text-align: center; color: rgba(255,255,255,0.4); font-size: 11px; padding: 20px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+    <div class="header">
+        <h1>🍽️ 급식지도 교사조회</h1>
+        <p>개인 일정 조회 앱</p>
+    </div>
+
+    <div id="msg-area"></div>
+
+    <!-- URL 입력 -->
+    <div class="card" id="url-card">
+        <h2>🔗 관리자 URL 연결</h2>
+        <p style="font-size:13px;color:#666;margin-bottom:12px">관리자에게 받은 URL을 붙여넣고 연결하기를 누르세요</p>
+        <input type="text" id="url-input" placeholder="https://script.google.com/macros/s/...">
+        <button class="btn-main" onclick="connect()">🔗 연결하기</button>
+    </div>
+
+    <!-- 이름 + 월 선택 -->
+    <div class="card" id="query-card" style="display:none">
+        <h2>👤 이름 입력</h2>
+        <input type="text" id="name-input" placeholder="예: 홍길동" oninput="search()">
+        <div id="month-area" style="margin-top:10px;"></div>
+    </div>
+
+    <div id="result-area"></div>
+    <div id="table-area"></div>
+
+    <div class="footer">Designed by Song HwaYoung | Ver 1.0 | 2026. 02. 17</div>
+</div>
+
+<script>
+var schedules = [];
+var selMonth = '';
+var tableVisible = false;
+
+window.onload = function() {
+    var savedUrl = localStorage.getItem('lunchDutyGasUrl') || '';
+    if (savedUrl) {
+        document.getElementById('url-input').value = savedUrl;
+        // 저장된 URL이 있으면 자동으로 최신 데이터 불러오기
+        showMsg('⏳ 최신 데이터 불러오는 중...', 'orange');
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', savedUrl + '?action=load', true);
+        xhr.onload = function() {
+            try {
+                var json = JSON.parse(xhr.responseText);
+                if (json.success && json.data && json.data.length > 0) {
+                    schedules = json.data;
+                    localStorage.setItem('lunchDutySavedSchedules', JSON.stringify(schedules));
+                    showMsg('✅ 최신 데이터: ' + schedules.map(function(s){ return s.year+'년 '+s.month+'월'; }).join(', '), 'green');
+                    showQueryCard();
+                } else {
+                    showMsg('⚠️ 데이터가 없습니다.', 'orange');
+                }
+            } catch(e) {
+                showMsg('❌ 불러오기 실패', 'red');
+            }
+        };
+        xhr.onerror = function() {
+            showMsg('❌ 서버 연결 실패', 'red');
+        };
+        xhr.send();
+    }
+};
+
+function connect() {
+    var url = document.getElementById('url-input').value.trim();
+    if (!url) { showMsg('❌ URL을 입력해주세요!', 'red'); return; }
+    localStorage.setItem('lunchDutyGasUrl', url);
+    showMsg('⏳ 데이터 불러오는 중...', 'orange');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url + '?action=load', true);
+    xhr.onload = function() {
+        try {
+            var json = JSON.parse(xhr.responseText);
+            if (json.success && json.data && json.data.length > 0) {
+                // 누적 없이 최신 데이터로 완전히 교체
+                schedules = json.data;
+                localStorage.setItem('lunchDutySavedSchedules', JSON.stringify(schedules));
+                showMsg('✅ ' + schedules.length + '개월 데이터 연결 성공!', 'green');
+                showQueryCard();
+            } else {
+                showMsg('⚠️ 데이터가 없습니다. 관리자가 먼저 업로드해야 해요.', 'orange');
+            }
+        } catch(e) {
+            showMsg('❌ 연결 실패. URL을 다시 확인해주세요.', 'red');
+        }
+    };
+    xhr.onerror = function() {
+        showMsg('❌ 연결 실패. URL을 다시 확인해주세요.', 'red');
+    };
+    xhr.send();
+}
+
+function showQueryCard() {
+    document.getElementById('query-card').style.display = 'block';
+    if (!selMonth && schedules.length > 0) {
+        var last = schedules[schedules.length-1];
+        selMonth = last.year + '-' + last.month;
+    }
+    renderMonthTabs();
+}
+
+function renderMonthTabs() {
+    var html = '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    schedules.forEach(function(s) {
+        var key = s.year + '-' + s.month;
+        var active = selMonth === key;
+        html += '<button onclick="selectMonth(\'' + key + '\')" style="padding:10px 16px;border-radius:8px;border:2px solid '+(active?'#d97642':'#ddd')+';background:'+(active?'#d97642':'white')+';color:'+(active?'white':'#666')+';font-size:14px;font-weight:bold;width:auto;margin-bottom:0">' + s.month + '월</button>';
+    });
+    html += '</div>';
+    document.getElementById('month-area').innerHTML = html;
+    search();
+}
+
+function selectMonth(key) {
+    selMonth = key;
+    tableVisible = false;
+    renderMonthTabs();
+}
+
+function search() {
+    var name = document.getElementById('name-input').value.trim();
+    var resultArea = document.getElementById('result-area');
+    var tableArea = document.getElementById('table-area');
+    if (!name || !selMonth) { resultArea.innerHTML = ''; tableArea.innerHTML = ''; return; }
+
+    var parts = selMonth.split('-');
+    var y = parseInt(parts[0]), m = parseInt(parts[1]);
+    var d = null;
+    for (var i=0; i<schedules.length; i++) {
+        if (schedules[i].year===y && schedules[i].month===m) { d=schedules[i]; break; }
+    }
+    if (!d) return;
+
+    var duties = getDuties(d, name);
+    var total = getTotalCount(name);
+
+    var html = '<div class="card"><h2>📊 ' + name + ' 선생님 통계</h2>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
+    html += '<div style="background:#faf8f5;border-radius:8px;padding:12px;text-align:center"><div style="font-size:11px;color:#8d6e63;margin-bottom:4px">이번 달</div><div style="font-size:22px;font-weight:900;color:#d97642">' + duties.length + '일</div></div>';
+    html += '<div style="background:#faf8f5;border-radius:8px;padding:12px;text-align:center"><div style="font-size:11px;color:#8d6e63;margin-bottom:4px">전체 누적</div><div style="font-size:22px;font-weight:900;color:#d97642">' + total + '일</div></div>';
+    html += '<div style="background:#faf8f5;border-radius:8px;padding:12px;text-align:center"><div style="font-size:11px;color:#8d6e63;margin-bottom:4px">첫 담당일</div><div style="font-size:15px;font-weight:900;color:#d97642">' + (duties.length>0?duties[0].date:'-') + '</div></div>';
+    html += '</div></div>';
+
+    html += '<div class="card"><h2>📋 ' + m + '월 내 담당 일정</h2>';
+    if (duties.length === 0) {
+        html += '<p style="text-align:center;padding:20px;color:#999">이번 달 배정된 일정이 없습니다.</p>';
+    } else {
+        duties.forEach(function(item) {
+            var next = getNext(d, item);
+            html += '<div class="duty">';
+            html += '<div class="duty-date">📅 ' + item.date + ' (' + item.dow + ')</div>';
+            html += '<div class="duty-info">🏫 ' + item.grade + ' 급식지도</div>';
+            if (item.loc) html += '<div class="duty-info">📍 ' + item.loc + '</div>';
+            if (next) html += '<div class="next-box">🔄 다음 담당: <strong>' + next.name + '</strong> (' + next.date + ')<br>→ 팻말을 ' + next.name + ' 선생님께 전달하세요!</div>';
+            html += '</div>';
+        });
+    }
+    html += '</div>';
+    resultArea.innerHTML = html;
+
+    tableArea.innerHTML = '<div class="card"><h2>📋 ' + m + '월 전체 배정 결과</h2><button class="btn-blue" onclick="toggleTable()" id="table-btn">📋 전체 배정 결과 보기 [클릭]</button><div id="table-content"></div></div>';
+}
+
+function toggleTable() {
+    tableVisible = !tableVisible;
+    document.getElementById('table-btn').textContent = tableVisible ? '👤 내 담당일만 보기 [클릭]' : '📋 전체 배정 결과 보기 [클릭]';
+    if (tableVisible) renderTable();
+    else document.getElementById('table-content').innerHTML = '';
+}
+
+function renderTable() {
+    var name = document.getElementById('name-input').value.trim();
+    var parts = selMonth.split('-');
+    var y = parseInt(parts[0]), m = parseInt(parts[1]);
+    var d = null;
+    for (var i=0; i<schedules.length; i++) {
+        if (schedules[i].year===y && schedules[i].month===m) { d=schedules[i]; break; }
+    }
+    if (!d) return;
+    var duties = getDuties(d, name);
+    var myDays = {};
+    duties.forEach(function(x){ myDays[x.day]=true; });
+
+    var html = '<div style="overflow-x:auto;margin-top:12px"><table><thead><tr><th>날짜</th><th>요일</th><th>1학년</th><th>2학년</th><th>3학년</th></tr></thead><tbody>';
+    for (var day=1; day<=31; day++) {
+        var mm = String(m).padStart(2,'0');
+        var dk = y+'-'+mm+'-'+String(day).padStart(2,'0');
+        var ds = d.schedule[dk];
+        if (!ds) continue;
+        var date = new Date(y, m-1, day);
+        if (date.getMonth() !== m-1) break;
+        var dow = date.getDay();
+        if (dow===0||dow===6) continue;
+        var dowStr = ['일','월','화','수','목','금','토'][dow];
+        var isMyDay = myDays[day];
+        html += '<tr style="background:'+(isMyDay?'#dcfce7':(day%2===0?'white':'#fafafa'))+'">';
+        html += '<td style="font-weight:bold;white-space:nowrap">'+m+'월'+day+'일'+(isMyDay?' ⭐':'')+'</td>';
+        html += '<td style="text-align:center">'+dowStr+'</td>';
+        ['grade1','grade2','grade3'].forEach(function(gId) {
+            html += '<td>';
+            var assigns = (ds[gId]||[]).filter(function(a){ return a&&a.teacherId; });
+            if (assigns.length===0) { html += '<span style="color:#ccc">-</span>'; }
+            else assigns.forEach(function(a) {
+                var t = null;
+                for (var i=0; i<d.teachers.length; i++) { if (d.teachers[i].id===a.teacherId) { t=d.teachers[i]; break; } }
+                if (!t) return;
+                var loc = a.location==='stairs'?'(계단)':a.location==='entrance'?'(입구)':'';
+                var isMe = t.name===name;
+                html += '<span class="chip'+(isMe?' chip-me':'')+'">'+t.name+loc+'</span>';
+            });
+            html += '</td>';
+        });
+        html += '</tr>';
+    }
+    html += '</tbody></table></div><p style="font-size:11px;color:#999;margin-top:6px">⭐초록=내담당 | 🟡노란이름=나</p>';
+    document.getElementById('table-content').innerHTML = html;
+}
+
+function getDuties(d, name) {
+    var res = [];
+    Object.keys(d.schedule).forEach(function(dk) {
+        var parts = dk.split('-');
+        var y=parseInt(parts[0]), m=parseInt(parts[1]), day=parseInt(parts[2]);
+        if (y!==d.year||m!==d.month) return;
+        var ds = d.schedule[dk];
+        ['grade1','grade2','grade3'].forEach(function(gId, gi) {
+            (ds[gId]||[]).forEach(function(a, idx) {
+                if (!a||!a.teacherId) return;
+                var t=null;
+                for (var i=0; i<d.teachers.length; i++) { if (d.teachers[i].id===a.teacherId) { t=d.teachers[i]; break; } }
+                if (!t||t.name!==name) return;
+                var dow = ['일','월','화','수','목','금','토'][new Date(y,m-1,day).getDay()];
+                var loc = a.location==='stairs'?'계단':a.location==='entrance'?'급식소 입구':'';
+                res.push({day:day, date:m+'월 '+day+'일', dow:dow, grade:(gi+1)+'학년', loc:loc, gId:gId, idx:idx});
+            });
+        });
+    });
+    return res.sort(function(a,b){ return a.day-b.day; });
+}
+
+function getNext(d, curr) {
+    var mm = String(d.month).padStart(2,'0');
+    for (var day=curr.day+1; day<=31; day++) {
+        var dk = d.year+'-'+mm+'-'+String(day).padStart(2,'0');
+        var ds = d.schedule[dk];
+        if (!ds) continue;
+        var a = (ds[curr.gId]||[])[curr.idx];
+        if (a&&a.teacherId) {
+            var t=null;
+            for (var i=0; i<d.teachers.length; i++) { if (d.teachers[i].id===a.teacherId) { t=d.teachers[i]; break; } }
+            if (t) return {name:t.name, date:d.month+'월 '+day+'일'};
+        }
+    }
+    return null;
+}
+
+function getTotalCount(name) {
+    var n=0;
+    schedules.forEach(function(d) {
+        Object.values(d.schedule).forEach(function(ds) {
+            ['grade1','grade2','grade3'].forEach(function(gId) {
+                (ds[gId]||[]).forEach(function(a) {
+                    if (!a||!a.teacherId) return;
+                    var t=null;
+                    for (var i=0; i<d.teachers.length; i++) { if (d.teachers[i].id===a.teacherId) { t=d.teachers[i]; break; } }
+                    if (t&&t.name===name) n++;
+                });
+            });
+        });
+    });
+    return n;
+}
+
+function showMsg(text, type) {
+    document.getElementById('msg-area').innerHTML = '<div class="msg msg-'+type+'">'+text+'</div>';
+    setTimeout(function(){ document.getElementById('msg-area').innerHTML=''; }, 4000);
+}
+</script>
+</body>
+</html>
